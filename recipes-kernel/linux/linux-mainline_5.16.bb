@@ -1,9 +1,9 @@
 require linux-mainline-common.inc
 
-LINUX_VERSION ?= "5.14.x"
+LINUX_VERSION ?= "5.16.x"
 KERNEL_VERSION_SANITY_SKIP="1"
 
-BRANCH = "linux-5.14.y"
+BRANCH = "linux-5.16.y"
 
 SRCREV = "${AUTOREV}"
 SRC_URI = " \

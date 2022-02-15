@@ -1,0 +1,151 @@
+From 41443b48291828c929f1198b8da51a8266ece4f5 Mon Sep 17 00:00:00 2001
+From: piratecarrot <39475419+piratecarrot@users.noreply.github.com>
+Date: Tue, 15 Feb 2022 20:00:40 +1100
+Subject: [PATCH] Ethernet fixes
+
+---
+ arch/arm/dts/stm32mp157c-odyssey-som-u-boot.dtsi |  6 +++---
+ arch/arm/dts/stm32mp157c-odyssey.dts             | 15 +++++++++++++--
+ configs/stm32mp15_basic_defconfig                |  4 +++-
+ drivers/net/dwc_eth_qos.c                        | 15 ++++++++-------
+ drivers/net/phy/phy.c                            |  1 +
+ 5 files changed, 28 insertions(+), 13 deletions(-)
+
+diff --git a/arch/arm/dts/stm32mp157c-odyssey-som-u-boot.dtsi b/arch/arm/dts/stm32mp157c-odyssey-som-u-boot.dtsi
+index 6be728846e..ddd5871afc 100644
+--- a/arch/arm/dts/stm32mp157c-odyssey-som-u-boot.dtsi
++++ b/arch/arm/dts/stm32mp157c-odyssey-som-u-boot.dtsi
+@@ -63,7 +63,7 @@
+ 		CLK_CKPER_HSE
+ 		CLK_FMC_ACLK
+ 		CLK_QSPI_ACLK
+-		CLK_ETH_DISABLED
++		CLK_ETH_PLL4P
+ 		CLK_SDMMC12_PLL4P
+ 		CLK_DSI_DSIPLL
+ 		CLK_STGEN_HSE
+@@ -115,11 +115,11 @@
+ 		u-boot,dm-pre-reloc;
+ 	};
+ 
+-	/* VCO = 594.0 MHz => P = 99, Q = 74, R = 74 */
++	/* VCO = 750.0 MHz => P = 125, Q = 62.5, R = 62.5 */
+ 	pll4: st,pll@3 {
+ 		compatible = "st,stm32mp1-pll";
+ 		reg = <3>;
+-		cfg = < 3 98 5 7 7 PQR(1,1,1) >;
++		cfg = < 3 124 5 11 11 PQR(1,1,1) >;
+ 		u-boot,dm-pre-reloc;
+ 	};
+ };
+diff --git a/arch/arm/dts/stm32mp157c-odyssey.dts b/arch/arm/dts/stm32mp157c-odyssey.dts
+index 0e725498dd..9d7219cc11 100644
+--- a/arch/arm/dts/stm32mp157c-odyssey.dts
++++ b/arch/arm/dts/stm32mp157c-odyssey.dts
+@@ -29,6 +29,13 @@
+ 			linux,default-trigger = "heartbeat";
+ 			default-state = "off";
+ 		};
++
++		ethrst {
++			label = "eth-rst";
++			gpios = <&gpiog  0  GPIO_ACTIVE_HIGH>;
++			linux,defaul-trigger = "eth-rst";
++			default-state = "on";
++		};
+ 	};
+ 
+ };
+@@ -75,13 +82,17 @@
+ 	phy-mode = "rgmii-id";
+ 	max-speed = <1000>;
+ 	phy-handle = <&phy0>;
++	st,eth_clk_sel;
+ 
+ 	mdio0 {
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+ 		compatible = "snps,dwmac-mdio";
+-		phy0: ethernet-phy@0 {
+-			reg = <0>;
++		reset-active-low;
++
++		phy0: ethernet-phy@7 { /* KSZ9031RN */
++			reg = <7>;
++			reset-gpios = <&gpiog 0 GPIO_ACTIVE_LOW>; /* ETH_RST# */
+ 		};
+ 	};
+ };
+diff --git a/configs/stm32mp15_basic_defconfig b/configs/stm32mp15_basic_defconfig
+index e199f2b7f9..22406b626a 100644
+--- a/configs/stm32mp15_basic_defconfig
++++ b/configs/stm32mp15_basic_defconfig
+@@ -117,7 +117,8 @@ CONFIG_SPI_FLASH_STMICRO=y
+ CONFIG_SPI_FLASH_WINBOND=y
+ # CONFIG_SPI_FLASH_USE_4K_SECTORS is not set
+ CONFIG_SPI_FLASH_MTD=y
+-CONFIG_PHY_REALTEK=y
++CONFIG_PHY_MICREL=y
++CONFIG_PHY_MICREL_KSZ90X1=y
+ CONFIG_DM_ETH=y
+ CONFIG_DWC_ETH_QOS=y
+ CONFIG_PHY=y
+@@ -173,3 +174,4 @@ CONFIG_FDT_FIXUP_PARTITIONS=y
+ # CONFIG_LMB_USE_MAX_REGIONS is not set
+ CONFIG_LMB_MEMORY_REGIONS=2
+ CONFIG_LMB_RESERVED_REGIONS=16
++CONFIG_NET_RANDOM_ETHADDR=y
+diff --git a/drivers/net/dwc_eth_qos.c b/drivers/net/dwc_eth_qos.c
+index b012bed517..429f4dbbc3 100644
+--- a/drivers/net/dwc_eth_qos.c
++++ b/drivers/net/dwc_eth_qos.c
+@@ -671,7 +671,7 @@ static int eqos_start_resets_tegra186(struct udevice *dev)
+ 		return ret;
+ 	}
+ 
+-	udelay(2);
++	mdelay(10);
+ 
+ 	ret = dm_gpio_set_value(&eqos->phy_reset_gpio, 0);
+ 	if (ret < 0) {
+@@ -1140,14 +1140,14 @@ static int eqos_start(struct udevice *dev)
+ 		goto err;
+ 	}
+ 
+-	ret = eqos->config->ops->eqos_start_resets(dev);
+-	if (ret < 0) {
+-		pr_err("eqos_start_resets() failed: %d", ret);
+-		goto err_stop_clks;
++	if (!eqos->phy) {
++		ret = eqos->config->ops->eqos_start_resets(dev);
++		if (ret < 0) {
++			pr_err("eqos_start_resets() failed: %d", ret);
++			goto err_stop_clks;
++		}
+ 	}
+ 
+-	udelay(10);
+-
+ 	eqos->reg_access_ok = true;
+ 
+ 	ret = wait_for_bit_le32(&eqos->dma_regs->mode,
+@@ -1755,6 +1755,7 @@ err_free_clk_master_bus:
+ err_free_clk_slave_bus:
+ 	clk_free(&eqos->clk_slave_bus);
+ err_free_gpio_phy_reset:
++	pr_err("**** dm_gpio_free( phy_reset_gpio )\n");
+ 	dm_gpio_free(dev, &eqos->phy_reset_gpio);
+ err_free_reset_eqos:
+ 	reset_free(&eqos->reset_ctl);
+diff --git a/drivers/net/phy/phy.c b/drivers/net/phy/phy.c
+index ed197fa46d..fd714a1156 100644
+--- a/drivers/net/phy/phy.c
++++ b/drivers/net/phy/phy.c
+@@ -805,6 +805,7 @@ static struct phy_device *get_phy_device_by_mask(struct mii_dev *bus,
+ 	int i, devad_cnt;
+ 
+ 	devad_cnt = sizeof(devad)/sizeof(int);
++	mdelay(5);
+ 	phydev = search_for_existing_phy(bus, phy_mask, interface);
+ 	if (phydev)
+ 		return phydev;
