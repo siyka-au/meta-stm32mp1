@@ -10,16 +10,41 @@ stm32mp1-based devices using upstream sources as much as possible.
 
 Dependencies:
 ------------
-	URI: git://git.openembedded.org/openembedded-core
-	layers: meta
-	branch: matched branches (e.g. master, warrior, ...)
+* OpenEmbedded Core git://git.openembedded.org/openembedded-core
+* layers: meta
+* branch: matched branches (e.g. master, warrior, ...)
 
 Status of supported boards:
 --------------------------
 builds and boots gpt image:
 
-	stm32mp157a-dk1
-	stm32mp157c-dk2
+* stm32mp157a-dk1
+* stm32mp157c-dk2
+* stm32mp157c-odyssey
+
+Getting Started:
+-----------
+
+```bash
+git clone --branch honister git://git.yoctoproject.org/poky
+cd poky
+git clone --branch honister git@github.com:siyka-au/meta-stm32mp1.git
+source oe-init-build-env build-odyssey
+bitbake-layers add-layer ../meta-stm32mp1
+sed -ie '/MACHINE ??= /s~".*"~"stm32mp157c-odyssey"~g' ${BUILDDIR}/conf/local.conf
+```
+
+Make any other changes to ${BUILDDIR}/conf/local.conf and ${BUILDDIR}/conf/bblayers.conf.
+
+To build the image
+```bash
+bitbake core-image-minimal
+```
+
+To flash the image
+```bash
+gunzip -c tmp/deploy/images/stm32mp157c-odyssey/core-image-minimal-stm32mp157c-odyssey.wic.gz | sudo dd of=/dev/<sdcard-device> bs=1M oflag=sync status=progress
+```
 
 Maintenance:
 -----------
@@ -38,5 +63,5 @@ follow-up discussions please use the GitHub's notification system.
 
 Maintainers:
 -----------
-	Pierre-Jean Texier <pjtexier@koncepto.io>
-	Joris Offouga <offougajoris@gmail.com>
+* Pierre-Jean Texier <pjtexier@koncepto.io>
+* Joris Offouga <offougajoris@gmail.com>
